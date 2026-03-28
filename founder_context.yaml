@@ -1,0 +1,73 @@
+# ELEVENELEVEN - Founder Context File
+# This file is used to auto-draft application answers.
+# Fill in your details — the more specific, the better the drafts.
+
+founder:
+  name: "[Your Name]"
+  pronouns: she/her
+  school: Harvard Business School (HBS)
+  program: "[MBA / MS / PhD — specify]"
+  graduation_year: "[Year]"
+  background: |
+    Pre-revenue solo Black female founder in consumer/retail tech.
+    HBS student with [X years] of prior experience in [industry].
+    [Add 2–3 sentences about your background, career path, and what led you here.]
+
+startup:
+  name: ELEVENELEVEN
+  tagline: "[One-line pitch]"
+  stage: pre-revenue
+  sector: consumer / retail tech
+  description: |
+    [2–3 sentence description of what ELEVENELEVEN does, the problem it solves,
+    and who the customer is.]
+  problem: |
+    [Describe the specific pain point or gap in the market you are addressing.]
+  solution: |
+    [Describe your product/service and how it uniquely solves the problem.]
+  traction: |
+    [List any early signals: waitlist signups, LOIs, pilot partners, user interviews,
+    press, competitions won, etc. If pre-traction, say so honestly.]
+  market:
+    size: "[TAM/SAM/SOM estimates if available]"
+    target_customer: "[Who is your primary customer?]"
+  business_model: |
+    [How does / will ELEVENELEVEN make money?]
+  competitive_advantage: |
+    [What makes you uniquely positioned to win? Unfair advantage, lived experience,
+    network, IP, etc.]
+  fundraising_status: "[Bootstrapped / Raised $X from Y]"
+  website: "[URL if available]"
+  pitch_deck: "[Link if available]"
+
+why_now: |
+  [What has changed in the market, technology, or culture that makes right now
+  the ideal moment for ELEVENELEVEN?]
+
+founder_story: |
+  [Personal narrative — why you, why this problem, why now. This is your hook.
+  Make it specific, honest, and compelling.]
+
+dei_statement: |
+  As a Black woman founder at HBS, I bring lived experience to a market that
+  has historically been underserved and underinvested. [Expand with 2–3 sentences
+  on the perspective and insight your identity gives you as a founder.]
+
+use_of_funds: |
+  [How would you use grant/accelerator money? Be specific: hiring, product,
+  marketing, legal, etc.]
+
+goals_6_months: |
+  [What do you expect to achieve in the next 6 months?]
+
+goals_12_months: |
+  [What do you expect to achieve in the next 12 months?]
+
+mentorship_needs: |
+  [What kind of mentorship, network access, or resources would be most valuable
+  to you right now?]
+
+references:
+  - name: "[Reference Name]"
+    title: "[Title, Organization]"
+    relationship: "[How they know you]"
