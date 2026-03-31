@@ -236,6 +236,46 @@ def _build_page_properties(opportunity: dict, completion_score: int = 0) -> dict
     return props
 
 
+def ensure_database_schema(client: Client, db_id: str) -> None:
+    """
+    Add any missing columns to the Notion database.
+    Safe to call on every run — skips columns that already exist.
+    """
+    REQUIRED_PROPERTIES = {
+        "Completion": {"number": {"format": "percent"}},
+        "Tags": {"multi_select": {"options": []}},
+        "Relevance": {"number": {"format": "number"}},
+        "Deadline": {"date": {}},
+        "Source": {"url": {}},
+        "Opportunity URL": {"url": {}},
+        "Type": {"select": {"options": [
+            {"name": "Grant", "color": "green"},
+            {"name": "Accelerator", "color": "blue"},
+            {"name": "Fellowship", "color": "purple"},
+            {"name": "Competition", "color": "orange"},
+            {"name": "Investment", "color": "red"},
+        ]}},
+        "Status": {"select": {"options": [
+            {"name": "New", "color": "gray"},
+            {"name": "Researching", "color": "yellow"},
+            {"name": "Drafting", "color": "orange"},
+            {"name": "Submitted", "color": "blue"},
+            {"name": "Rejected", "color": "red"},
+            {"name": "Won", "color": "green"},
+        ]}},
+    }
+
+    try:
+        db = client.databases.retrieve(database_id=db_id)
+        existing = set(db.get("properties", {}).keys())
+        missing = {k: v for k, v in REQUIRED_PROPERTIES.items() if k not in existing}
+        if missing:
+            client.databases.update(database_id=db_id, properties=missing)
+            logger.info(f"Added missing columns to Notion database: {list(missing.keys())}")
+    except APIResponseError as e:
+        logger.warning(f"Could not update database schema: {e}")
+
+
 def archive_all_pages(client: Client, db_id: str) -> int:
     """Archive (soft-delete) all pages in the database. Returns count archived."""
     archived = 0
@@ -358,6 +398,10 @@ def push_all(
     Returns { "created": int, "skipped": int, "errors": int }
     """
     stats = {"created": 0, "skipped": 0, "errors": 0}
+
+    client = get_client()
+    db_id = get_database_id()
+    ensure_database_schema(client, db_id)
 
     for opp in opportunities:
         url = opp["opportunity_url"]
