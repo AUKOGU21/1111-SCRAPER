@@ -91,7 +91,7 @@ def print_opportunities_table(opportunities: List[dict], limit: int = 20) -> Non
     console.print(table)
 
 
-def run(dry_run: bool = False, top: int = 0) -> None:
+def run(dry_run: bool = False, top: int = 0, refresh: bool = False) -> None:
     """Core pipeline: scrape → draft → push to Notion."""
     console.rule("[bold blue]ELEVENELEVEN Grants Scraper[/bold blue]")
     console.print(f"  Run started at [bold]{datetime.now().strftime('%Y-%m-%d %H:%M')}[/bold]\n")
@@ -114,6 +114,13 @@ def run(dry_run: bool = False, top: int = 0) -> None:
 
     if not check_env():
         sys.exit(1)
+
+    # Optional: wipe existing pages before re-creating
+    if refresh:
+        from notion.client import get_client, get_database_id, archive_all_pages
+        console.print("[bold yellow]Refreshing: archiving all existing Notion pages...[/bold yellow]")
+        n = archive_all_pages(get_client(), get_database_id())
+        console.print(f"  Archived {n} pages. Recreating now...\n")
 
     # 2. Generate drafts + completion scores
     console.print("[bold]Step 2/3: Generating application drafts...[/bold]")
@@ -202,6 +209,8 @@ def main() -> None:
                             help="Only push the top N by relevance.")
     run_parser.add_argument("--all-sources", action="store_true",
                             help="Include sources not flagged as pre-revenue-ok.")
+    run_parser.add_argument("--refresh", action="store_true",
+                            help="Archive all existing Notion pages and recreate from scratch.")
 
     # ── add (manual entry) ─────────────────────────────────────────────────────
     add_parser = subparsers.add_parser("add", help="Manually add an opportunity to Notion")
@@ -228,7 +237,7 @@ def main() -> None:
     # run command (or no subcommand)
     dry_run = getattr(args, "dry_run", False)
     top = getattr(args, "top", 0)
-    pre_revenue_only = not getattr(args, "all_sources", False)
+    refresh = getattr(args, "refresh", False)
     schedule_mode = getattr(args, "schedule", False)
 
     if schedule_mode:
@@ -237,13 +246,13 @@ def main() -> None:
             f"[bold blue]Scheduling scraper every {interval} hours.[/bold blue] "
             f"Press Ctrl+C to stop."
         )
-        run(dry_run=dry_run, top=top)
+        run(dry_run=dry_run, top=top, refresh=refresh)
         schedule.every(interval).hours.do(run, dry_run=dry_run, top=top)
         while True:
             schedule.run_pending()
             time.sleep(60)
     else:
-        run(dry_run=dry_run, top=top)
+        run(dry_run=dry_run, top=top, refresh=refresh)
 
 
 if __name__ == "__main__":

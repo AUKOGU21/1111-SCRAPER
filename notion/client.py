@@ -236,6 +236,27 @@ def _build_page_properties(opportunity: dict, completion_score: int = 0) -> dict
     return props
 
 
+def archive_all_pages(client: Client, db_id: str) -> int:
+    """Archive (soft-delete) all pages in the database. Returns count archived."""
+    archived = 0
+    cursor = None
+    while True:
+        kwargs = {"database_id": db_id, "page_size": 100}
+        if cursor:
+            kwargs["start_cursor"] = cursor
+        results = client.databases.query(**kwargs)
+        for page in results.get("results", []):
+            try:
+                client.pages.update(page_id=page["id"], archived=True)
+                archived += 1
+            except APIResponseError as e:
+                logger.warning(f"Could not archive page {page['id']}: {e}")
+        if not results.get("has_more"):
+            break
+        cursor = results.get("next_cursor")
+    return archived
+
+
 def push_opportunity(
     opportunity: dict,
     drafts: Optional[dict] = None,
