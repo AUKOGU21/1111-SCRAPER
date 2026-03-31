@@ -46,6 +46,7 @@ SCHEMA = {
     "Opportunity URL": {"url": {}},
     "Tags": {"multi_select": {"options": []}},
     "Relevance": {"number": {"format": "number"}},
+    "Completion": {"number": {"format": "percent"}},
     "Scraped At": {"date": {}},
 }
 

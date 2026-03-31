@@ -67,29 +67,66 @@ def _page_exists(client: Client, db_id: str, opportunity_url: str) -> Optional[s
         return None
 
 
-def _build_todo_blocks() -> List[dict]:
-    """Return a standard to-do checklist as Notion blocks."""
-    todos = [
+def _build_todo_blocks(incomplete_fields: Optional[List[str]] = None) -> List[dict]:
+    """
+    Return a to-do checklist as Notion blocks.
+    Includes dynamic items for any incomplete founder_context.yaml fields.
+    """
+    blocks = []
+
+    # ── Context completion to-dos (dynamic) ───────────────────────────────────
+    if incomplete_fields:
+        blocks.append({
+            "object": "block",
+            "type": "heading_3",
+            "heading_3": {
+                "rich_text": [{"type": "text", "text": {
+                    "content": "Complete Your Founder Context (needed for better drafts)"
+                }}]
+            },
+        })
+        for field in incomplete_fields:
+            blocks.append({
+                "object": "block",
+                "type": "to_do",
+                "to_do": {
+                    "rich_text": [{"type": "text", "text": {
+                        "content": f"Fill in founder_context.yaml: {field}"
+                    }}],
+                    "checked": False,
+                },
+            })
+        blocks.append({"object": "block", "type": "divider", "divider": {}})
+
+    # ── Standard application to-dos ───────────────────────────────────────────
+    blocks.append({
+        "object": "block",
+        "type": "heading_3",
+        "heading_3": {
+            "rich_text": [{"type": "text", "text": {"content": "Application Steps"}}]
+        },
+    })
+    standard_todos = [
         "Review eligibility requirements",
-        "Read previous cohort / winners for research",
-        "Customize 'Why This Program' answer",
+        "Read about previous cohort / winners",
+        "Customize 'Why This Program' answer with specific reasons",
         "Prepare pitch deck (if required)",
         "Gather references / letters of recommendation",
         "Proofread all application answers",
-        "Submit application",
+        "Submit application before deadline",
         "Follow up after submission",
     ]
-    return [
-        {
+    for todo in standard_todos:
+        blocks.append({
             "object": "block",
             "type": "to_do",
             "to_do": {
                 "rich_text": [{"type": "text", "text": {"content": todo}}],
                 "checked": False,
             },
-        }
-        for todo in todos
-    ]
+        })
+
+    return blocks
 
 
 def _build_draft_blocks(drafts: dict) -> List[dict]:
@@ -161,7 +198,7 @@ def _build_draft_blocks(drafts: dict) -> List[dict]:
     return blocks
 
 
-def _build_page_properties(opportunity: dict) -> dict:
+def _build_page_properties(opportunity: dict, completion_score: int = 0) -> dict:
     """Map opportunity fields to Notion database properties."""
     props = {
         "Name": {
@@ -182,13 +219,14 @@ def _build_page_properties(opportunity: dict) -> dict:
         "Relevance": {
             "number": opportunity.get("relevance_score", 0)
         },
+        "Completion": {
+            "number": completion_score
+        },
     }
 
-    # Deadline (optional)
     if opportunity.get("deadline"):
         props["Deadline"] = {"date": {"start": opportunity["deadline"]}}
 
-    # Tags (multi_select — must be plain strings)
     tags = opportunity.get("tags", [])
     if tags:
         props["Tags"] = {
@@ -201,6 +239,8 @@ def _build_page_properties(opportunity: dict) -> dict:
 def push_opportunity(
     opportunity: dict,
     drafts: Optional[dict] = None,
+    completion_score: int = 0,
+    incomplete_fields: Optional[List[str]] = None,
     update_existing: bool = False,
 ) -> Optional[str]:
     """
@@ -210,24 +250,42 @@ def push_opportunity(
     client = get_client()
     db_id = get_database_id()
 
-    # Check for duplicates
     existing_id = _page_exists(client, db_id, opportunity["opportunity_url"])
     if existing_id and not update_existing:
         logger.info(f"  Skipping (already in Notion): {opportunity['title']}")
         return existing_id
 
-    properties = _build_page_properties(opportunity)
+    properties = _build_page_properties(opportunity, completion_score=completion_score)
 
-    # Build page body
+    # Completion banner
+    if incomplete_fields:
+        remaining = len(incomplete_fields)
+        banner_text = (
+            f"Application {completion_score}% complete — "
+            f"{remaining} context field{'s' if remaining != 1 else ''} still needed. "
+            f"Fill them in founder_context.yaml to improve your drafts."
+        )
+    else:
+        banner_text = "Application context 100% complete. Review and personalize your drafts before submitting."
+
     children = [
+        {
+            "object": "block",
+            "type": "callout",
+            "callout": {
+                "rich_text": [{"type": "text", "text": {"content": banner_text}}],
+                "icon": {"emoji": "📊"},
+                "color": "yellow_background" if incomplete_fields else "green_background",
+            },
+        },
         {
             "object": "block",
             "type": "heading_2",
             "heading_2": {
-                "rich_text": [{"type": "text", "text": {"content": "Application To-Do List"}}]
+                "rich_text": [{"type": "text", "text": {"content": "To-Do List"}}]
             },
         },
-        *_build_todo_blocks(),
+        *_build_todo_blocks(incomplete_fields=incomplete_fields),
         {"object": "block", "type": "divider", "divider": {}},
     ]
 
@@ -267,22 +325,34 @@ def push_opportunity(
 def push_all(
     opportunities: List[dict],
     drafts_map: Optional[Dict[str, dict]] = None,
+    completion_map: Optional[Dict[str, int]] = None,
+    incomplete_map: Optional[Dict[str, List[str]]] = None,
     update_existing: bool = False,
 ) -> dict:
     """
     Push all opportunities to Notion.
-    drafts_map: { opportunity_url -> drafts_dict }
+    drafts_map:     { opportunity_url -> drafts_dict }
+    completion_map: { opportunity_url -> completion_score }
+    incomplete_map: { opportunity_url -> [incomplete_field_labels] }
     Returns { "created": int, "skipped": int, "errors": int }
     """
     stats = {"created": 0, "skipped": 0, "errors": 0}
 
     for opp in opportunities:
-        drafts = (drafts_map or {}).get(opp["opportunity_url"])
-        result = push_opportunity(opp, drafts=drafts, update_existing=update_existing)
+        url = opp["opportunity_url"]
+        drafts = (drafts_map or {}).get(url)
+        score = (completion_map or {}).get(url, 0)
+        incomplete = (incomplete_map or {}).get(url)
+        result = push_opportunity(
+            opp,
+            drafts=drafts,
+            completion_score=score,
+            incomplete_fields=incomplete,
+            update_existing=update_existing,
+        )
         if result:
             stats["created"] += 1
         else:
-            # Distinguish skip vs error by checking if it already existed
             stats["errors"] += 1
 
     return stats

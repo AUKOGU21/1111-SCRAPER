@@ -7,8 +7,9 @@ Supports two modes:
 
 import logging
 import os
+import re
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import yaml
 
@@ -197,20 +198,103 @@ def draft_with_openai(opportunity: dict, ctx: dict) -> dict:
     return drafts
 
 
-def generate_drafts(opportunity: dict) -> dict:
+# ── Completion scoring ────────────────────────────────────────────────────────
+
+# These are the context fields we check. Tuple of (display_label, key_path)
+# key_path uses dot notation for nested fields e.g. "startup.tagline"
+SCORED_FIELDS = [
+    ("Your name",                   "founder.name"),
+    ("Program (MBA/MS/etc)",        "founder.program"),
+    ("Graduation year",             "founder.graduation_year"),
+    ("Founder background",          "founder.background"),
+    ("Startup tagline",             "startup.tagline"),
+    ("Startup description",         "startup.description"),
+    ("Problem statement",           "startup.problem"),
+    ("Solution description",        "startup.solution"),
+    ("Traction / early signals",    "startup.traction"),
+    ("Business model",              "startup.business_model"),
+    ("Competitive advantage",       "startup.competitive_advantage"),
+    ("Target customer",             "startup.market.target_customer"),
+    ("Market size (TAM/SAM/SOM)",   "startup.market.size"),
+    ("Fundraising status",          "startup.fundraising_status"),
+    ("Why now",                     "why_now"),
+    ("Founder story",               "founder_story"),
+    ("DEI statement",               "dei_statement"),
+    ("Use of funds",                "use_of_funds"),
+    ("6-month goals",               "goals_6_months"),
+    ("12-month goals",              "goals_12_months"),
+    ("Mentorship needs",            "mentorship_needs"),
+]
+
+PLACEHOLDER_PATTERN = re.compile(r"^\s*\[.*\]\s*$", re.DOTALL)
+
+
+def _get_nested(ctx: dict, key_path: str):
+    """Retrieve a value from a nested dict using dot notation."""
+    parts = key_path.split(".")
+    val = ctx
+    for part in parts:
+        if not isinstance(val, dict):
+            return None
+        val = val.get(part)
+    return val
+
+
+def _is_placeholder(value) -> bool:
+    """Return True if the value is missing or still contains placeholder text."""
+    if value is None:
+        return True
+    s = str(value).strip()
+    if not s:
+        return True
+    # Matches patterns like "[Your Name]" or "[Add 2–3 sentences...]"
+    if PLACEHOLDER_PATTERN.match(s):
+        return True
+    # Partial placeholder — contains [...] anywhere
+    if re.search(r"\[.{3,}\]", s):
+        return True
+    return False
+
+
+def score_completion(ctx: dict) -> Tuple[int, List[str]]:
+    """
+    Score how complete founder_context.yaml is.
+
+    Returns:
+        (score_0_to_100, list_of_incomplete_field_labels)
+    """
+    incomplete = []
+    for label, key_path in SCORED_FIELDS:
+        value = _get_nested(ctx, key_path)
+        if _is_placeholder(value):
+            incomplete.append(label)
+
+    total = len(SCORED_FIELDS)
+    filled = total - len(incomplete)
+    score = int((filled / total) * 100)
+    return score, incomplete
+
+
+def generate_drafts(opportunity: dict) -> Tuple[dict, int, List[str]]:
     """
     Main entry point. Generates drafts for a given opportunity.
     Uses OpenAI if available, otherwise falls back to templates.
+
+    Returns:
+        (drafts_dict, completion_score_0_to_100, incomplete_fields_list)
     """
     ctx = load_context()
     use_openai = bool(os.environ.get("OPENAI_API_KEY"))
 
     if use_openai:
         logger.info(f"Generating OpenAI drafts for: {opportunity['title']}")
-        return draft_with_openai(opportunity, ctx)
+        drafts = draft_with_openai(opportunity, ctx)
     else:
         logger.info(f"Generating template drafts for: {opportunity['title']}")
-        return draft_with_templates(opportunity, ctx)
+        drafts = draft_with_templates(opportunity, ctx)
+
+    score, incomplete = score_completion(ctx)
+    return drafts, score, incomplete
 
 
 def format_drafts_for_notion(drafts: dict) -> str:

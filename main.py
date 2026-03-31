@@ -115,22 +115,45 @@ def run(dry_run: bool = False, top: int = 0) -> None:
     if not check_env():
         sys.exit(1)
 
-    # 2. Generate drafts
+    # 2. Generate drafts + completion scores
     console.print("[bold]Step 2/3: Generating application drafts...[/bold]")
     from drafts.generator import generate_drafts
     drafts_map = {}
+    completion_map = {}
+    incomplete_map = {}
     for opp in opportunities:
         try:
-            drafts_map[opp["opportunity_url"]] = generate_drafts(opp)
-            console.print(f"  Drafted: [dim]{opp['title'][:60]}[/dim]")
+            drafts, score, incomplete = generate_drafts(opp)
+            url = opp["opportunity_url"]
+            drafts_map[url] = drafts
+            completion_map[url] = score
+            incomplete_map[url] = incomplete
+            console.print(
+                f"  [{('green' if score >= 80 else 'yellow' if score >= 50 else 'red')}]"
+                f"{score}%[/] complete  [dim]{opp['title'][:55]}[/dim]"
+            )
         except Exception as e:
             logger.error(f"Draft generation failed for {opp['title']}: {e}")
-    console.print(f"\n  [green]Drafts generated for {len(drafts_map)} opportunities.[/green]\n")
+
+    if completion_map:
+        avg = int(sum(completion_map.values()) / len(completion_map))
+        console.print(f"\n  Average completion: [bold]{avg}%[/bold]")
+        if avg < 80:
+            console.print(
+                f"  [yellow]Tip: fill in more of founder_context.yaml "
+                f"to improve draft quality.[/yellow]"
+            )
+    console.print()
 
     # 3. Push to Notion
     console.print("[bold]Step 3/3: Pushing to Notion...[/bold]")
     from notion.client import push_all
-    stats = push_all(opportunities, drafts_map=drafts_map)
+    stats = push_all(
+        opportunities,
+        drafts_map=drafts_map,
+        completion_map=completion_map,
+        incomplete_map=incomplete_map,
+    )
 
     console.print(f"\n  [green]Done![/green]")
     console.print(f"  Created: [bold]{stats['created']}[/bold]  "
@@ -152,10 +175,11 @@ def add_manual(name: str, url: str, opp_type: str, deadline: Optional[str], tags
     opp = add_manual_opportunity(name, url, opp_type, deadline, tag_list, notes)
 
     console.print(f"\n[bold]Generating drafts for:[/bold] {name}")
-    drafts = generate_drafts(opp)
+    drafts, score, incomplete = generate_drafts(opp)
+    console.print(f"  Context completion: [bold]{score}%[/bold]")
 
     console.print("[bold]Pushing to Notion...[/bold]")
-    page_id = push_opportunity(opp, drafts=drafts)
+    page_id = push_opportunity(opp, drafts=drafts, completion_score=score, incomplete_fields=incomplete)
     if page_id:
         console.print(f"[green]Done![/green] Added to Notion: {name}")
     else:
