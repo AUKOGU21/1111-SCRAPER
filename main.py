@@ -15,6 +15,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import List
 
 import schedule
 import time
@@ -61,7 +62,7 @@ def check_env() -> bool:
     return True
 
 
-def print_opportunities_table(opportunities: list[dict], limit: int = 20) -> None:
+def print_opportunities_table(opportunities: List[dict], limit: int = 20) -> None:
     table = Table(title=f"Top {min(limit, len(opportunities))} Opportunities by Relevance")
     table.add_column("Score", style="cyan", width=6)
     table.add_column("Title", style="bold white", max_width=45)

@@ -7,7 +7,7 @@ import logging
 import re
 import time
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Dict, List, Optional
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -149,7 +149,7 @@ def _parse_opportunity_block(element, source: dict, base_url: str) -> Optional[d
     }
 
 
-def scrape_source(source: dict) -> list[dict]:
+def scrape_source(source: dict) -> List[dict]:
     """Scrape a single source and return a list of opportunity dicts."""
     logger.info(f"Scraping: {source['name']} ({source['url']})")
     html = _fetch_html(source["url"])
@@ -212,7 +212,7 @@ def scrape_source(source: dict) -> list[dict]:
     return opportunities
 
 
-def run_scraper(delay_between_sources: float = 2.0) -> list[dict]:
+def run_scraper(delay_between_sources: float = 2.0) -> List[dict]:
     """
     Scrape all sources and return a deduplicated list of opportunities,
     sorted by relevance score descending.

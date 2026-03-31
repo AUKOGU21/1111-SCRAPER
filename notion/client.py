@@ -20,7 +20,7 @@ Each page also gets:
 import logging
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Dict, List, Optional
 
 from notion_client import Client
 from notion_client.errors import APIResponseError
@@ -67,7 +67,7 @@ def _page_exists(client: Client, db_id: str, opportunity_url: str) -> Optional[s
         return None
 
 
-def _build_todo_blocks() -> list[dict]:
+def _build_todo_blocks() -> List[dict]:
     """Return a standard to-do checklist as Notion blocks."""
     todos = [
         "Review eligibility requirements",
@@ -92,7 +92,7 @@ def _build_todo_blocks() -> list[dict]:
     ]
 
 
-def _build_draft_blocks(drafts: dict) -> list[dict]:
+def _build_draft_blocks(drafts: dict) -> List[dict]:
     """Convert draft answers dict into Notion paragraph blocks."""
     blocks = []
 
@@ -265,8 +265,8 @@ def push_opportunity(
 
 
 def push_all(
-    opportunities: list[dict],
-    drafts_map: Optional[dict[str, dict]] = None,
+    opportunities: List[dict],
+    drafts_map: Optional[Dict[str, dict]] = None,
     update_existing: bool = False,
 ) -> dict:
     """
