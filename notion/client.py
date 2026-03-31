@@ -220,7 +220,7 @@ def _build_page_properties(opportunity: dict, completion_score: int = 0) -> dict
             "number": opportunity.get("relevance_score", 0)
         },
         "Completion": {
-            "number": completion_score
+            "number": round(completion_score / 100, 2)  # Notion percent format expects 0.0–1.0
         },
     }
 
