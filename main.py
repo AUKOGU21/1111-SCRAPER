@@ -15,7 +15,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import schedule
 import time
@@ -65,17 +65,26 @@ def check_env() -> bool:
 def print_opportunities_table(opportunities: List[dict], limit: int = 20) -> None:
     table = Table(title=f"Top {min(limit, len(opportunities))} Opportunities by Relevance")
     table.add_column("Score", style="cyan", width=6)
-    table.add_column("Title", style="bold white", max_width=45)
-    table.add_column("Type", style="green", width=14)
+    table.add_column("Title", style="bold white", max_width=40)
+    table.add_column("Type", style="green", width=12)
     table.add_column("Deadline", style="yellow", width=12)
-    table.add_column("Source", style="dim", max_width=25)
+    table.add_column("Status", style="magenta", width=9)
+    table.add_column("Source", style="dim", max_width=22)
 
     for opp in opportunities[:limit]:
+        open_status = opp.get("open_status", "Unknown")
+        status_style = {
+            "Open": "[green]Open[/green]",
+            "Closed": "[red]Closed[/red]",
+            "Unknown": "[yellow]?[/yellow]",
+        }.get(open_status, open_status)
+
         table.add_row(
             str(opp.get("relevance_score", 0)),
             opp["title"],
             opp["type"],
             opp.get("deadline") or "TBD",
+            status_style,
             opp["source_name"],
         )
 
@@ -130,44 +139,87 @@ def run(dry_run: bool = False, top: int = 0) -> None:
     console.rule()
 
 
+def add_manual(name: str, url: str, opp_type: str, deadline: Optional[str], tags: str, notes: str) -> None:
+    """Add a manually found opportunity directly to Notion."""
+    if not check_env():
+        sys.exit(1)
+
+    from scraper.scraper import add_manual_opportunity
+    from drafts.generator import generate_drafts
+    from notion.client import push_opportunity
+
+    tag_list = [t.strip() for t in tags.split(",")] if tags else ["manual"]
+    opp = add_manual_opportunity(name, url, opp_type, deadline, tag_list, notes)
+
+    console.print(f"\n[bold]Generating drafts for:[/bold] {name}")
+    drafts = generate_drafts(opp)
+
+    console.print("[bold]Pushing to Notion...[/bold]")
+    page_id = push_opportunity(opp, drafts=drafts)
+    if page_id:
+        console.print(f"[green]Done![/green] Added to Notion: {name}")
+    else:
+        console.print(f"[red]Failed to push to Notion.[/red]")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="ELEVENELEVEN Grants & Accelerator Scraper"
     )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Scrape only; do not generate drafts or push to Notion.",
-    )
-    parser.add_argument(
-        "--schedule",
-        action="store_true",
-        help="Run on a daily schedule (interval set by SCRAPE_INTERVAL_HOURS).",
-    )
-    parser.add_argument(
-        "--top",
-        type=int,
-        default=0,
-        help="Only push the top N opportunities by relevance score.",
-    )
-    args = parser.parse_args()
+    subparsers = parser.add_subparsers(dest="command")
 
+    # ── run (default) ──────────────────────────────────────────────────────────
+    run_parser = subparsers.add_parser("run", help="Scrape and push to Notion (default)")
+    run_parser.add_argument("--dry-run", action="store_true",
+                            help="Scrape only; no Notion push.")
+    run_parser.add_argument("--schedule", action="store_true",
+                            help="Run on a daily schedule.")
+    run_parser.add_argument("--top", type=int, default=0,
+                            help="Only push the top N by relevance.")
+    run_parser.add_argument("--all-sources", action="store_true",
+                            help="Include sources not flagged as pre-revenue-ok.")
+
+    # ── add (manual entry) ─────────────────────────────────────────────────────
+    add_parser = subparsers.add_parser("add", help="Manually add an opportunity to Notion")
+    add_parser.add_argument("name", help="Program name, e.g. 'Canopy by f.inc'")
+    add_parser.add_argument("url", help="Application URL")
+    add_parser.add_argument("--type", default="accelerator",
+                            choices=["grant", "accelerator", "fellowship", "competition", "investment"],
+                            help="Opportunity type")
+    add_parser.add_argument("--deadline", default=None,
+                            help="Deadline in YYYY-MM-DD format, e.g. 2025-04-06")
+    add_parser.add_argument("--tags", default="manual",
+                            help="Comma-separated tags, e.g. 'consumer,pre-revenue ok'")
+    add_parser.add_argument("--notes", default="",
+                            help="Any notes about this opportunity")
+
+    args = parser.parse_args()
     Path("logs").mkdir(exist_ok=True)
 
-    if args.schedule:
+    # Default to 'run' if no subcommand given
+    if args.command == "add":
+        add_manual(args.name, args.url, args.type, args.deadline, args.tags, args.notes)
+        return
+
+    # run command (or no subcommand)
+    dry_run = getattr(args, "dry_run", False)
+    top = getattr(args, "top", 0)
+    pre_revenue_only = not getattr(args, "all_sources", False)
+    schedule_mode = getattr(args, "schedule", False)
+
+    if schedule_mode:
         interval = int(os.environ.get("SCRAPE_INTERVAL_HOURS", 24))
         console.print(
             f"[bold blue]Scheduling scraper every {interval} hours.[/bold blue] "
             f"Press Ctrl+C to stop."
         )
-        # Run immediately, then on schedule
-        run(dry_run=args.dry_run, top=args.top)
-        schedule.every(interval).hours.do(run, dry_run=args.dry_run, top=args.top)
+        run(dry_run=dry_run, top=top)
+        schedule.every(interval).hours.do(run, dry_run=dry_run, top=top)
         while True:
             schedule.run_pending()
             time.sleep(60)
     else:
-        run(dry_run=args.dry_run, top=args.top)
+        run(dry_run=dry_run, top=top)
 
 
 if __name__ == "__main__":
