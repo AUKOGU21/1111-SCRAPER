@@ -200,6 +200,16 @@ def _build_draft_blocks(drafts: dict) -> List[dict]:
 
 def _build_page_properties(opportunity: dict, completion_score: int = 0) -> dict:
     """Map opportunity fields to Notion database properties."""
+    # Map internal status to Notion application-tracking status
+    open_status = opportunity.get("status", "open")
+    notion_status_map = {
+        "open": "New",
+        "always_open": "New",
+        "opens_soon": "Watch",
+        "closed_check_site": "Watch",
+    }
+    notion_status = notion_status_map.get(open_status, "New")
+
     props = {
         "Name": {
             "title": [{"text": {"content": opportunity["title"][:200]}}]
@@ -208,7 +218,7 @@ def _build_page_properties(opportunity: dict, completion_score: int = 0) -> dict
             "select": {"name": opportunity["type"].replace("_aggregator", "").capitalize()}
         },
         "Status": {
-            "select": {"name": opportunity.get("status", "New")}
+            "select": {"name": notion_status}
         },
         "Source": {
             "url": opportunity["source_url"]
@@ -220,7 +230,7 @@ def _build_page_properties(opportunity: dict, completion_score: int = 0) -> dict
             "number": opportunity.get("relevance_score", 0)
         },
         "Completion": {
-            "number": round(completion_score / 100, 2)  # Notion percent format expects 0.0–1.0
+            "number": round(completion_score / 100, 2)
         },
     }
 
@@ -257,6 +267,7 @@ def ensure_database_schema(client: Client, db_id: str) -> None:
         ]}},
         "Status": {"select": {"options": [
             {"name": "New", "color": "gray"},
+            {"name": "Watch", "color": "purple"},
             {"name": "Researching", "color": "yellow"},
             {"name": "Drafting", "color": "orange"},
             {"name": "Submitted", "color": "blue"},
@@ -329,7 +340,28 @@ def push_opportunity(
     else:
         banner_text = "Application context 100% complete. Review and personalize your drafts before submitting."
 
+    # Build quick-reference info block
+    info_lines = []
+    if opportunity.get("amount"):
+        info_lines.append(f"💰 Amount: {opportunity['amount']}")
+    if opportunity.get("deadline"):
+        info_lines.append(f"📅 Deadline: {opportunity['deadline']}")
+    if opportunity.get("cycle"):
+        info_lines.append(f"🔄 Cycle: {opportunity['cycle']}")
+    if opportunity.get("description"):
+        info_lines.append(f"📝 Notes: {opportunity['description']}")
+    info_text = "\n".join(info_lines) if info_lines else "See opportunity URL for details."
+
     children = [
+        {
+            "object": "block",
+            "type": "callout",
+            "callout": {
+                "rich_text": [{"type": "text", "text": {"content": info_text}}],
+                "icon": {"emoji": "🎯"},
+                "color": "blue_background",
+            },
+        },
         {
             "object": "block",
             "type": "callout",
